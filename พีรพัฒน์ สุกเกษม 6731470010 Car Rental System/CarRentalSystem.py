@@ -3,11 +3,11 @@ from abc import ABC, abstractmethod
 from datetime import date, datetime
 import random
 import sys
-import tkinter as tk
-from tkinter import messagebox, simpledialog, ttk
 
 import mysql.connector
 from mysql.connector import Error
+import pandas as pd
+import streamlit as st
 
 
 # ==========================================
@@ -36,7 +36,6 @@ class DatabaseConnection:
   def initialize_database(cls):
     """สร้าง Database, Tables และบัญชี Admin อัตโนมัติหากยังไม่มีในระบบ"""
     try:
-      # เชื่อมต่อแบบยังไม่ระบุฐานข้อมูลเพื่อสร้าง Database
       conn = mysql.connector.connect(
           host=cls._config['host'],
           user=cls._config['user'],
@@ -50,7 +49,6 @@ class DatabaseConnection:
       cursor.close()
       conn.close()
 
-      # เชื่อมต่อฐานข้อมูล car_rental_db เพื่อสร้าง Tables
       conn = cls.get_connection()
       if not conn:
         return
@@ -151,10 +149,9 @@ class DatabaseConnection:
       connection = mysql.connector.connect(**cls._config)
       return connection
     except Error as e:
-      messagebox.showerror(
-          'ข้อผิดพลาดฐานข้อมูล',
-          f'ไม่สามารถเชื่อมต่อฐานข้อมูล MySQL ได้ (Port 3306):\n{e}\n\n'
-          'กรุณาตรวจสอบว่าเปิด XAMPP / MySQL Service แล้วหรือยัง',
+      st.error(
+          f'ไม่สามารถเชื่อมต่อฐานข้อมูล MySQL ได้ (Port 3306):\n{e}\n\nกรุณาตรวจสอบว่าเปิด'
+          ' XAMPP / MySQL Service แล้วหรือยัง'
       )
       return None
 
@@ -191,12 +188,21 @@ def seed_100_vehicles():
         v_type = random.choice(types)
         color = random.choice(colors)
         year = random.randint(2019, 2024)
-        price = float(random.choice([800, 1000, 1200, 1500, 1800, 2200, 2500, 3000]))
+        price = float(
+            random.choice([800, 1000, 1200, 1500, 1800, 2200, 2500, 3000])
+        )
         license_plate = f"{random.choice(['กข', 'ขก', 'ชผ', 'ฮฮ', 'กก', '9ก'])} {random.randint(1000, 9999)}"
 
-        vehicles_data.append(
-            (brand, model, license_plate, v_type, year, color, price, 'AVAILABLE')
-        )
+        vehicles_data.append((
+            brand,
+            model,
+            license_plate,
+            v_type,
+            year,
+            color,
+            price,
+            'AVAILABLE',
+        ))
 
       query = """INSERT INTO vehicles (brand, model, license_plate, type, year, color, price_per_day, status)
                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""
@@ -407,8 +413,10 @@ class UserDAO:
       cursor = conn.cursor(dictionary=True)
       hashed_pwd = hash_password(password)
 
-      # ตรวจสอบรหัสผ่านทั้งแบบ Hash และ Plain (รวมถึงตรวจสอบ Role ที่เลือก)
-      query = 'SELECT * FROM users WHERE username = %s AND (password = %s OR password = %s) AND role = %s'
+      query = (
+          'SELECT * FROM users WHERE username = %s AND (password = %s OR'
+          ' password = %s) AND role = %s'
+      )
       cursor.execute(query, (username, hashed_pwd, password, expected_role))
       user_data = cursor.fetchone()
       cursor.close()
@@ -441,9 +449,7 @@ class UserDAO:
             )
       conn.close()
     except Error as e:
-      messagebox.showerror(
-          'ข้อผิดพลาด', f'เกิดข้อผิดพลาดในการตรวจสอบข้อมูล: {e}'
-      )
+      st.error(f'เกิดข้อผิดพลาดในการตรวจสอบข้อมูล: {e}')
     return None
 
   def register_customer(
@@ -466,7 +472,7 @@ class UserDAO:
       return True
     except Error as e:
       conn.rollback()
-      messagebox.showerror('ข้อผิดพลาดการลงทะเบียน', str(e))
+      st.error(f'ข้อผิดพลาดการลงทะเบียน: {e}')
       return False
     finally:
       cursor.close()
@@ -524,14 +530,13 @@ class VehicleDAO:
       conn.commit()
       return True
     except Error as e:
-      messagebox.showerror('ข้อผิดพลาดฐานข้อมูล', str(e))
+      st.error(f'ข้อผิดพลาดฐานข้อมูล: {e}')
       return False
     finally:
       cursor.close()
       conn.close()
 
   def updateVehicle(self, vehicle: Vehicle):
-    """แก้ไขข้อมูลรถยนต์"""
     conn = DatabaseConnection.get_connection()
     if not conn:
       return False
@@ -557,7 +562,7 @@ class VehicleDAO:
       conn.commit()
       return True
     except Error as e:
-      messagebox.showerror('ข้อผิดพลาดการแก้ไข', str(e))
+      st.error(f'ข้อผิดพลาดการแก้ไข: {e}')
       return False
     finally:
       cursor.close()
@@ -573,9 +578,7 @@ class VehicleDAO:
       conn.commit()
       return True
     except Error as e:
-      messagebox.showerror(
-          'ข้อผิดพลาด', 'ไม่สามารถลบรถที่มีประวัติการเช่าค้างอยู่ได้'
-      )
+      st.error('ไม่สามารถลบรถที่มีประวัติการเช่าค้างอยู่ได้')
       return False
     finally:
       cursor.close()
@@ -630,14 +633,13 @@ class RentalDAO:
       return True
     except Error as e:
       conn.rollback()
-      messagebox.showerror('ข้อผิดพลาดในการเช่า', str(e))
+      st.error(f'ข้อผิดพลาดในการเช่า: {e}')
       return False
     finally:
       cursor.close()
       conn.close()
 
   def cancelRental(self, rental_id, vehicle_id):
-    """ยกเลิกการเช่ารถยนต์และคืนสถานะรถยนต์"""
     conn = DatabaseConnection.get_connection()
     if not conn:
       return False
@@ -653,7 +655,7 @@ class RentalDAO:
       return True
     except Error as e:
       conn.rollback()
-      messagebox.showerror('ข้อผิดพลาดการยกเลิก', str(e))
+      st.error(f'ข้อผิดพลาดการยกเลิก: {e}')
       return False
     finally:
       cursor.close()
@@ -698,7 +700,7 @@ class RentalDAO:
       return True
     except Error as e:
       conn.rollback()
-      messagebox.showerror('ข้อผิดพลาดการคืนรถ', str(e))
+      st.error(f'ข้อผิดพลาดการคืนรถ: {e}')
       return False
     finally:
       cursor.close()
@@ -737,1025 +739,477 @@ class RentalDAO:
 
 
 # ==========================================
-# 6. GUI LAYER (MODERN THAI INTERFACE)
+# 6. STREAMLIT WEB APP UI
 # ==========================================
-class MainApplication(tk.Tk):
+def main():
+  st.set_page_config(
+      page_title='Car Rental System', page_icon='🚗', layout='wide'
+  )
 
-  def __init__(self):
-    super().__init__()
-    self.title('ระบบจัดการเช่ารถยนต์ (Car Rental System - OOP & MySQL)')
-    self.geometry('1100x720')
-    self.configure(bg='#F4F6F9')
+  # Initial Setup Database
+  DatabaseConnection.initialize_database()
+  seed_100_vehicles()
 
-    # สร้าง DB, Tables และรถยนต์จำลอง 100 คัน อัตโนมัติ
-    DatabaseConnection.initialize_database()
-    seed_100_vehicles()
+  user_dao = UserDAO()
+  vehicle_dao = VehicleDAO()
+  rental_dao = RentalDAO()
 
-    self.setup_styles()
+  # Session State Management
+  if 'user' not in st.session_state:
+    st.session_state['user'] = None
 
-    self.user_dao = UserDAO()
-    self.vehicle_dao = VehicleDAO()
-    self.rental_dao = RentalDAO()
-
-    self.current_user = None
-    self.show_login_frame()
-
-  def setup_styles(self):
-    self.style = ttk.Style()
-    self.style.theme_use('clam')
-
-    PRIMARY_COLOR = '#1E3A8A'
-    SECONDARY_COLOR = '#0D9488'
-    BG_COLOR = '#F4F6F9'
-    TEXT_COLOR = '#1F2937'
-    WHITE = '#FFFFFF'
-
-    self.style.configure('.', background=BG_COLOR, foreground=TEXT_COLOR)
-    self.style.configure('TFrame', background=BG_COLOR)
-    self.style.configure('Card.TFrame', background=WHITE, relief='flat')
-    self.style.configure('White.TFrame', background=WHITE)
-
-    self.style.configure(
-        'TLabel', background=BG_COLOR, font=('Tahoma', 10), foreground=TEXT_COLOR
-    )
-    self.style.configure(
-        'White.TLabel',
-        background=WHITE,
-        font=('Tahoma', 10),
-        foreground=TEXT_COLOR,
-    )
-    self.style.configure(
-        'Header.TLabel',
-        font=('Tahoma', 18, 'bold'),
-        foreground=PRIMARY_COLOR,
-        background=BG_COLOR,
-    )
-    self.style.configure(
-        'WhiteHeader.TLabel',
-        font=('Tahoma', 18, 'bold'),
-        foreground=PRIMARY_COLOR,
-        background=WHITE,
+  # ------------------------------------------
+  # 6.1 LOGIN / REGISTER PAGES
+  # ------------------------------------------
+  if st.session_state['user'] is None:
+    st.title('🚗 ระบบจัดการเช่ารถยนต์ (Car Rental Web App)')
+    page_mode = st.sidebar.radio(
+        'เลือกหน้าใช้งาน', ['เข้าสู่ระบบ', 'สมัครสมาชิกใหม่']
     )
 
-    self.style.configure('TRadiobutton', background=WHITE)
-    self.style.configure('TEntry', fieldbackground=WHITE, font=('Tahoma', 10))
+    if page_mode == 'เข้าสู่ระบบ':
+      st.subheader('🔑 เข้าสู่ระบบ')
+      col1, col2 = st.columns([1, 2])
 
-    self.style.configure(
-        'Primary.TButton',
-        font=('Tahoma', 10, 'bold'),
-        background=PRIMARY_COLOR,
-        foreground=WHITE,
-        borderwidth=0,
-    )
-    self.style.map(
-        'Primary.TButton',
-        background=[('active', '#1D4ED8'), ('disabled', '#9CA3AF')],
-    )
-
-    self.style.configure(
-        'Success.TButton',
-        font=('Tahoma', 10, 'bold'),
-        background=SECONDARY_COLOR,
-        foreground=WHITE,
-        borderwidth=0,
-    )
-    self.style.map('Success.TButton', background=[('active', '#14B8A6')])
-
-    self.style.configure(
-        'Danger.TButton',
-        font=('Tahoma', 10, 'bold'),
-        background='#DC2626',
-        foreground=WHITE,
-        borderwidth=0,
-    )
-    self.style.map('Danger.TButton', background=[('active', '#EF4444')])
-
-    self.style.configure(
-        'TNotebook', background=BG_COLOR, tabmargins=[2, 5, 2, 0]
-    )
-    self.style.configure(
-        'TNotebook.Tab',
-        font=('Tahoma', 10, 'bold'),
-        padding=[15, 8],
-        background='#E5E7EB',
-        foreground=TEXT_COLOR,
-    )
-    self.style.map(
-        'TNotebook.Tab',
-        background=[('selected', PRIMARY_COLOR)],
-        foreground=[('selected', WHITE)],
-    )
-
-    self.style.configure(
-        'Treeview',
-        font=('Tahoma', 9),
-        rowheight=28,
-        background=WHITE,
-        fieldbackground=WHITE,
-        bordercolor='#E5E7EB',
-    )
-    self.style.configure(
-        'Treeview.Heading',
-        font=('Tahoma', 10, 'bold'),
-        background=PRIMARY_COLOR,
-        foreground=WHITE,
-        relief='flat',
-    )
-    self.style.map(
-        'Treeview',
-        background=[('selected', '#3B82F6')],
-        foreground=[('selected', WHITE)],
-    )
-
-  def clear_screen(self):
-    for widget in self.winfo_children():
-      widget.destroy()
-
-  # --- LOGIN & REGISTER VIEWS ---
-  def show_login_frame(self):
-    self.clear_screen()
-
-    card = ttk.Frame(self, style='Card.TFrame', padding=35)
-    card.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
-
-    ttk.Label(
-        card, text='🚗 เข้าสู่ระบบเช่ารถยนต์', style='WhiteHeader.TLabel'
-    ).grid(row=0, column=0, columnspan=2, pady=(0, 20))
-
-    ttk.Label(card, text='สิทธิ์การใช้งาน:', style='White.TLabel').grid(
-        row=1, column=0, sticky=tk.W, pady=8
-    )
-    role_var = tk.StringVar(value=UserRole.CUSTOMER)
-    role_frame = ttk.Frame(card, style='White.TFrame')
-    role_frame.grid(row=1, column=1, sticky=tk.W, pady=8, padx=(10, 0))
-
-    ttk.Radiobutton(
-        role_frame,
-        text='ลูกค้า (Customer)',
-        value=UserRole.CUSTOMER,
-        variable=role_var,
-        style='TRadiobutton',
-    ).pack(side=tk.LEFT, padx=(0, 10))
-    ttk.Radiobutton(
-        role_frame,
-        text='ผู้ดูแลระบบ (Admin)',
-        value=UserRole.ADMIN,
-        variable=role_var,
-        style='TRadiobutton',
-    ).pack(side=tk.LEFT)
-
-    ttk.Label(
-        card, text='ชื่อผู้ใช้งาน (Username):', style='White.TLabel'
-    ).grid(row=2, column=0, sticky=tk.W, pady=8)
-    entry_user = ttk.Entry(card, width=28)
-    entry_user.grid(row=2, column=1, pady=8, padx=(10, 0))
-
-    ttk.Label(card, text='รหัสผ่าน (Password):', style='White.TLabel').grid(
-        row=3, column=0, sticky=tk.W, pady=8
-    )
-    entry_pass = ttk.Entry(card, show='*', width=28)
-    entry_pass.grid(row=3, column=1, pady=8, padx=(10, 0))
-
-    def do_login():
-      selected_role = role_var.get()
-      user = self.user_dao.authenticate(
-          entry_user.get().strip(), entry_pass.get().strip(), selected_role
-      )
-      if user:
-        self.current_user = user
-        if user.get_role() == UserRole.ADMIN:
-          self.show_admin_dashboard()
-        else:
-          self.show_customer_dashboard()
-      else:
-        messagebox.showerror(
-            'เข้าสู่ระบบไม่สำเร็จ',
-            'ชื่อผู้ใช้ รหัสผ่าน หรือสิทธิ์การใช้งานไม่ถูกต้อง',
+      with col1:
+        role_choice = st.radio(
+            'สิทธิ์การใช้งาน', ['ลูกค้า (Customer)', 'ผู้ดูแลระบบ (Admin)']
+        )
+        selected_role = (
+            UserRole.ADMIN
+            if 'Admin' in role_choice
+            else UserRole.CUSTOMER
         )
 
-    btn_login = ttk.Button(
-        card, text='เข้าสู่ระบบ', style='Primary.TButton', command=do_login
-    )
-    btn_login.grid(row=4, column=0, columnspan=2, pady=(20, 10), sticky=tk.EW)
+        username = st.text_input('ชื่อผู้ใช้งาน (Username)')
+        password = st.text_input('รหัสผ่าน (Password)', type='password')
 
-    btn_reg = ttk.Button(
-        card,
-        text='ลงทะเบียนผู้ใช้งานใหม่ (เฉพาะลูกค้า)',
-        style='Success.TButton',
-        command=self.show_register_frame,
-    )
-    btn_reg.grid(row=5, column=0, columnspan=2, sticky=tk.EW)
-
-  def show_register_frame(self):
-    self.clear_screen()
-
-    card = ttk.Frame(self, style='Card.TFrame', padding=30)
-    card.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
-
-    ttk.Label(
-        card, text='📝 สมัครสมาชิกใหม่ (ลูกค้า)', style='WhiteHeader.TLabel'
-    ).grid(row=0, column=0, columnspan=2, pady=(0, 15))
-
-    fields = [
-        ('Username', 'ชื่อผู้ใช้:'),
-        ('Password', 'รหัสผ่าน:'),
-        ('Full Name', 'ชื่อ-นามสกุล:'),
-        ('Phone', 'เบอร์โทรศัพท์:'),
-        ('Email', 'อีเมล:'),
-        ('Address', 'ที่อยู่:'),
-        ('Driver License', 'ใบขับขี่:'),
-    ]
-    entries = {}
-
-    for idx, (key, label_text) in enumerate(fields, start=1):
-      ttk.Label(card, text=label_text, style='White.TLabel').grid(
-          row=idx, column=0, sticky=tk.W, pady=5
-      )
-      ent = ttk.Entry(card, width=32, show='*' if key == 'Password' else '')
-      ent.grid(row=idx, column=1, pady=5, padx=(10, 0))
-      entries[key] = ent
-
-    def do_register():
-      if not all(entries[k].get().strip() for k in entries):
-        messagebox.showwarning('แจ้งเตือน', 'กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง')
-        return
-
-      success = self.user_dao.register_customer(
-          entries['Username'].get().strip(),
-          entries['Password'].get().strip(),
-          entries['Full Name'].get().strip(),
-          entries['Phone'].get().strip(),
-          entries['Email'].get().strip(),
-          entries['Address'].get().strip(),
-          entries['Driver License'].get().strip(),
-      )
-      if success:
-        messagebox.showinfo(
-            'สำเร็จ', 'ลงทะเบียนเรียบร้อยแล้ว! กรุณาเข้าสู่ระบบ'
-        )
-        self.show_login_frame()
-
-    ttk.Button(
-        card,
-        text='ยืนยันการลงทะเบียน',
-        style='Success.TButton',
-        command=do_register,
-    ).grid(row=len(fields) + 1, column=0, columnspan=2, pady=(15, 5), sticky=tk.EW)
-
-    ttk.Button(
-        card,
-        text='กลับสู่หน้าเข้าสู่ระบบ',
-        style='Primary.TButton',
-        command=self.show_login_frame,
-    ).grid(row=len(fields) + 2, column=0, columnspan=2, sticky=tk.EW)
-
-  # --- ADMIN DASHBOARD ---
-  def show_admin_dashboard(self):
-    self.clear_screen()
-
-    header = ttk.Frame(self, padding=(15, 10))
-    header.pack(fill=tk.X)
-    ttk.Label(
-        header,
-        text=(
-            '👑 แผงควบคุมผู้ดูแลระบบ (ผู้ใช้:'
-            f' {self.current_user.get_username()})'
-        ),
-        style='Header.TLabel',
-    ).pack(side=tk.LEFT)
-    ttk.Button(
-        header,
-        text='ออกจากระบบ',
-        style='Danger.TButton',
-        command=self.show_login_frame,
-    ).pack(side=tk.RIGHT)
-
-    notebook = ttk.Notebook(self)
-    notebook.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-
-    tab_vehicles = ttk.Frame(notebook, padding=10)
-    tab_rentals = ttk.Frame(notebook, padding=10)
-
-    notebook.add(tab_vehicles, text=' 🚗 จัดการข้อมูลรถยนต์ ')
-    notebook.add(tab_rentals, text=' 📋 รายการเช่าและรับคืนรถ ')
-
-    self.setup_admin_vehicles_tab(tab_vehicles)
-    self.setup_admin_rentals_tab(tab_rentals)
-
-  def setup_admin_vehicles_tab(self, parent):
-    top_btn_frame = ttk.Frame(parent)
-    top_btn_frame.pack(fill=tk.X, pady=(0, 10))
-
-    columns = (
-        'id',
-        'brand',
-        'model',
-        'license',
-        'type',
-        'year',
-        'color',
-        'price',
-        'status',
-    )
-    headers = (
-        'รหัส',
-        'ยี่ห้อ',
-        'รุ่น',
-        'ทะเบียน',
-        'ประเภท',
-        'ปี',
-        'สี',
-        'ราคา/วัน',
-        'สถานะ',
-    )
-
-    tree = ttk.Treeview(parent, columns=columns, show='headings')
-    for c, h in zip(columns, headers):
-      tree.heading(c, text=h)
-      tree.column(c, width=100, anchor=tk.CENTER)
-
-    scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=tree.yview)
-    tree.configure(yscroll=scrollbar.set)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    tree.pack(fill=tk.BOTH, expand=True)
-
-    def load_vehicles():
-      for i in tree.get_children():
-        tree.delete(i)
-      for v in self.vehicle_dao.getAllVehicles():
-        status_th = STATUS_THAI.get(v.get_status(), v.get_status())
-        tree.insert(
-            '',
-            tk.END,
-            values=(
-                v.get_id(),
-                v.get_brand(),
-                v.get_model(),
-                v.get_license_plate(),
-                v.get_type(),
-                v.get_year(),
-                v.get_color(),
-                f'฿{v.get_price_per_day():,.2f}',
-                status_th,
-            ),
-        )
-
-    def add_vehicle_dialog():
-      dlg = tk.Toplevel(self)
-      dlg.title('เพิ่มข้อมูลรถยนต์ใหม่')
-      dlg.geometry('350x450')
-      dlg.configure(bg='#FFFFFF')
-
-      fields = [
-          ('Brand', 'ยี่ห้อ:'),
-          ('Model', 'รุ่น:'),
-          ('License Plate', 'ทะเบียนรถ:'),
-          ('Type', 'ประเภทรถ:'),
-          ('Year', 'ปีรถ (ค.ศ.):'),
-          ('Color', 'สีรถ:'),
-          ('Price Per Day', 'ราคาเช่าต่อวัน:'),
-      ]
-      entries = {}
-      for idx, (k, label_text) in enumerate(fields):
-        ttk.Label(dlg, text=label_text, style='White.TLabel').pack(
-            anchor=tk.W, padx=25, pady=(5, 0)
-        )
-        e = ttk.Entry(dlg, width=30)
-        e.pack(padx=25, pady=(0, 5))
-        entries[k] = e
-
-      def save():
-        try:
-          v = Vehicle(
-              brand=entries['Brand'].get(),
-              model=entries['Model'].get(),
-              license_plate=entries['License Plate'].get(),
-              vehicle_type=entries['Type'].get(),
-              year=int(entries['Year'].get()),
-              color=entries['Color'].get(),
-              price_per_day=float(entries['Price Per Day'].get()),
+        if st.button('เข้าสู่ระบบ', type='primary', use_container_width=True):
+          user = user_dao.authenticate(
+              username.strip(), password.strip(), selected_role
           )
-          if self.vehicle_dao.addVehicle(v):
-            messagebox.showinfo('สำเร็จ', 'บันทึกข้อมูลรถยนต์เรียบร้อย')
-            dlg.destroy()
-            load_vehicles()
-        except Exception:
-          messagebox.showerror(
-              'ข้อมูลไม่ถูกต้อง', 'กรุณาตรวจสอบตัวเลขในช่อง ปี และ ราคาเช่า'
-          )
+          if user:
+            st.session_state['user'] = user
+            st.success('เข้าสู่ระบบสำเร็จ!')
+            st.rerun()
+          else:
+            st.error('ชื่อผู้ใช้ รหัสผ่าน หรือสิทธิ์การใช้งานไม่ถูกต้อง')
 
-      ttk.Button(
-          dlg, text='บันทึกข้อมูล', style='Success.TButton', command=save
-      ).pack(pady=15, fill=tk.X, padx=25)
+    elif page_mode == 'สมัครสมาชิกใหม่':
+      st.subheader('📝 สมัครสมาชิกใหม่ (สำหรับลูกค้า)')
+      with st.form('reg_form'):
+        reg_user = st.text_input('Username*')
+        reg_pass = st.text_input('Password*', type='password')
+        reg_name = st.text_input('ชื่อ-นามสกุล*')
+        reg_phone = st.text_input('เบอร์โทรศัพท์*')
+        reg_email = st.text_input('อีเมล*')
+        reg_address = st.text_area('ที่อยู่*')
+        reg_license = st.text_input('เลขที่ใบขับขี่*')
 
-    def edit_vehicle_dialog():
-      selected = tree.selection()
-      if not selected:
-        messagebox.showwarning('แจ้งเตือน', 'กรุณาเลือกรถยนต์ที่ต้องการแก้ไข')
-        return
-
-      item_vals = tree.item(selected[0])['values']
-      v_id = item_vals[0]
-
-      dlg = tk.Toplevel(self)
-      dlg.title(f'แก้ไขข้อมูลรถยนต์ (รหัส: {v_id})')
-      dlg.geometry('350x520')
-      dlg.configure(bg='#FFFFFF')
-
-      fields = [
-          ('Brand', 'ยี่ห้อ:', item_vals[1]),
-          ('Model', 'รุ่น:', item_vals[2]),
-          ('License Plate', 'ทะเบียนรถ:', item_vals[3]),
-          ('Type', 'ประเภทรถ:', item_vals[4]),
-          ('Year', 'ปีรถ (ค.ศ.):', item_vals[5]),
-          ('Color', 'สีรถ:', item_vals[6]),
-          (
-              'Price Per Day',
-              'ราคาเช่าต่อวัน:',
-              str(item_vals[7]).replace('฿', '').replace(',', ''),
-          ),
-      ]
-      entries = {}
-      for k, label_text, val in fields:
-        ttk.Label(dlg, text=label_text, style='White.TLabel').pack(
-            anchor=tk.W, padx=25, pady=(4, 0)
-        )
-        e = ttk.Entry(dlg, width=30)
-        e.insert(0, val)
-        e.pack(padx=25, pady=(0, 4))
-        entries[k] = e
-
-      ttk.Label(dlg, text='สถานะ:', style='White.TLabel').pack(
-          anchor=tk.W, padx=25, pady=(4, 0)
-      )
-      status_cb = ttk.Combobox(
-          dlg,
-          values=['พร้อมใช้งาน', 'ถูกเช่าอยู่', 'ซ่อมบำรุง'],
-          state='readonly',
-          width=28,
-      )
-      status_cb.set(item_vals[8])
-      status_cb.pack(padx=25, pady=(0, 4))
-
-      def update():
-        try:
-          rev_status = {
-              'พร้อมใช้งาน': 'AVAILABLE',
-              'ถูกเช่าอยู่': 'RENTED',
-              'ซ่อมบำรุง': 'MAINTENANCE',
-          }
-          v = Vehicle(
-              vehicle_id=v_id,
-              brand=entries['Brand'].get(),
-              model=entries['Model'].get(),
-              license_plate=entries['License Plate'].get(),
-              vehicle_type=entries['Type'].get(),
-              year=int(entries['Year'].get()),
-              color=entries['Color'].get(),
-              price_per_day=float(entries['Price Per Day'].get()),
-              status=rev_status.get(status_cb.get(), 'AVAILABLE'),
-          )
-          if self.vehicle_dao.updateVehicle(v):
-            messagebox.showinfo('สำเร็จ', 'อัปเดตข้อมูลรถยนต์เรียบร้อยแล้ว')
-            dlg.destroy()
-            load_vehicles()
-        except Exception as ex:
-          messagebox.showerror('ข้อผิดพลาด', f'ข้อมูลไม่ถูกต้อง: {ex}')
-
-      ttk.Button(
-          dlg, text='อัปเดตข้อมูล', style='Success.TButton', command=update
-      ).pack(pady=15, fill=tk.X, padx=25)
-
-    def delete_vehicle():
-      selected = tree.selection()
-      if not selected:
-        messagebox.showwarning(
-            'แจ้งเตือน', 'กรุณาเลือกรายการรถยนต์ที่ต้องการลบ'
-        )
-        return
-      v_id = tree.item(selected[0])['values'][0]
-      if messagebox.askyesno(
-          'ยืนยัน', 'คุณต้องการลบข้อมูลรถยนต์คันนี้ใช่หรือไม่?'
-      ):
-        if self.vehicle_dao.deleteVehicle(v_id):
-          load_vehicles()
-
-    ttk.Button(
-        top_btn_frame,
-        text='🔄 รีเฟรช',
-        style='Primary.TButton',
-        command=load_vehicles,
-    ).pack(side=tk.LEFT, padx=5)
-    ttk.Button(
-        top_btn_frame,
-        text='➕ เพิ่มรถยนต์ใหม่',
-        style='Success.TButton',
-        command=add_vehicle_dialog,
-    ).pack(side=tk.LEFT, padx=5)
-    ttk.Button(
-        top_btn_frame,
-        text='✏️ แก้ไขข้อมูลรถ',
-        style='Primary.TButton',
-        command=edit_vehicle_dialog,
-    ).pack(side=tk.LEFT, padx=5)
-    ttk.Button(
-        top_btn_frame,
-        text='🗑️ ลบรถยนต์ที่เลือก',
-        style='Danger.TButton',
-        command=delete_vehicle,
-    ).pack(side=tk.LEFT, padx=5)
-
-    load_vehicles()
-
-  def setup_admin_rentals_tab(self, parent):
-    columns = (
-        'id',
-        'customer',
-        'vehicle',
-        'license',
-        'start',
-        'due',
-        'return',
-        'total_price',
-        'status',
-    )
-    headers = (
-        'รหัสเช่า',
-        'ชื่อลูกค้า',
-        'รุ่นรถ',
-        'ทะเบียน',
-        'เริ่มเช่า',
-        'กำหนดคืน',
-        'คืนจริง',
-        'ราคารวม',
-        'สถานะ',
-    )
-
-    tree = ttk.Treeview(parent, columns=columns, show='headings')
-    for c, h in zip(columns, headers):
-      tree.heading(c, text=h)
-      tree.column(c, width=100, anchor=tk.CENTER)
-
-    scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=tree.yview)
-    tree.configure(yscroll=scrollbar.set)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    tree.pack(fill=tk.BOTH, expand=True)
-
-    def load_rentals():
-      for i in tree.get_children():
-        tree.delete(i)
-      for r in self.rental_dao.getAllRentals():
-        v_name = f"{r['brand']} {r['model']}"
-        status_th = STATUS_THAI.get(r['status'], r['status'])
-        tree.insert(
-            '',
-            tk.END,
-            values=(
-                r['id'],
-                r['customer_name'],
-                v_name,
-                r['license_plate'],
-                r['start_date'],
-                r['due_date'],
-                r['return_date'] or '-',
-                f"฿{r['total_price']:,.2f}",
-                status_th,
-            ),
+        submit_reg = st.form_submit_button(
+            'ยืนยันการลงทะเบียน', type='primary'
         )
 
-    def process_return():
-      selected = tree.selection()
-      if not selected:
-        messagebox.showwarning(
-            'แจ้งเตือน', 'กรุณาเลือกรายการเช่าที่ต้องการคืนรถ'
-        )
-        return
-      item = tree.item(selected[0])
-      r_id, status_th = item['values'][0], item['values'][8]
-
-      if status_th == STATUS_THAI['COMPLETED']:
-        messagebox.showinfo(
-            'แจ้งเตือน', 'รายการนี้ทำรายการคืนรถเรียบร้อยแล้ว'
-        )
-        return
-      elif status_th == STATUS_THAI['CANCELLED']:
-        messagebox.showinfo('แจ้งเตือน', 'รายการนี้ถูกยกเลิกไปแล้ว')
-        return
-
-      all_r = self.rental_dao.getAllRentals()
-      r_data = next((x for x in all_r if x['id'] == r_id), None)
-
-      if r_data:
-        today = date.today()
-        due_date = r_data['due_date']
-        late_days = (today - due_date).days if today > due_date else 0
-        late_fee = late_days * 500.0
-
-        pay_strat = CashPayment()
-        if late_fee > 0:
-          messagebox.showinfo(
-              'คำนวณค่าปรับเกินเวลา',
-              f'เกินกำหนด {late_days} วัน!\nค่าปรับที่ต้องชำระเพิ่ม:'
-              f' ฿{late_fee:,.2f}',
-          )
-          method_str = simpledialog.askstring(
-              'ชำระค่าปรับ',
-              'ช่องทางชำระเงินค่าปรับ (ระบุ: เงินสด / บัตรเครดิต / โอนเงิน):',
-          )
-          if method_str and (
-              'บัตร' in method_str or 'credit' in method_str.lower()
+        if submit_reg:
+          if not (
+              reg_user
+              and reg_pass
+              and reg_name
+              and reg_phone
+              and reg_email
+              and reg_address
+              and reg_license
           ):
-            pay_strat = CreditCardPayment('4111-XXXX-XXXX-9999')
-          elif method_str and (
-              'โอน' in method_str or 'bank' in method_str.lower()
+            st.warning('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง')
+          else:
+            success = user_dao.register_customer(
+                reg_user.strip(),
+                reg_pass.strip(),
+                reg_name.strip(),
+                reg_phone.strip(),
+                reg_email.strip(),
+                reg_address.strip(),
+                reg_license.strip(),
+            )
+            if success:
+              st.success(
+                  'ลงทะเบียนเรียบร้อยแล้ว! กรุณาเปลี่ยนเป็นหน้า "เข้าสู่ระบบ"'
+              )
+
+  # ------------------------------------------
+  # 6.2 MAIN DASHBOARD (LOGGED IN)
+  # ------------------------------------------
+  else:
+    current_user = st.session_state['user']
+
+    # Sidebar Logout & User Info
+    st.sidebar.markdown(
+        f'### 👤 สวัสดี: **{current_user.get_username()}**'
+    )
+    st.sidebar.caption(f'สิทธิ์การใช้งาน: {current_user.get_role()}')
+    if st.sidebar.button('🚪 ออกจากระบบ', type='secondary'):
+      st.session_state['user'] = None
+      st.rerun()
+
+    # ==========================================
+    # ADMIN VIEW
+    # ==========================================
+    if current_user.get_role() == UserRole.ADMIN:
+      st.title(
+          f'👑 แผงควบคุมผู้ดูแลระบบ (Admin: {current_user.get_username()})'
+      )
+
+      tab1, tab2 = st.tabs(
+          ['🚗 จัดการข้อมูลรถยนต์', '📋 รายการเช่าและรับคืนรถ']
+      )
+
+      # TAB 1: จัดการข้อมูลรถยนต์
+      with tab1:
+        st.subheader('รายการรถยนต์ทั้งหมดในระบบ')
+
+        vehicles_list = vehicle_dao.getAllVehicles()
+        v_data = []
+        for v in vehicles_list:
+          v_data.append({
+              'รหัส': v.get_id(),
+              'ยี่ห้อ': v.get_brand(),
+              'รุ่น': v.get_model(),
+              'ทะเบียน': v.get_license_plate(),
+              'ประเภท': v.get_type(),
+              'ปี': v.get_year(),
+              'สี': v.get_color(),
+              'ราคา/วัน': f'฿{v.get_price_per_day():,.2f}',
+              'สถานะ': STATUS_THAI.get(v.get_status(), v.get_status()),
+          })
+        df_v = pd.DataFrame(v_data)
+        st.dataframe(df_v, use_container_width=True, height=350)
+
+        st.divider()
+
+        # Action: เพิ่ม / แก้ไข / ลบ รถยนต์
+        col_add, col_edit, col_del = st.columns(3)
+
+        with col_add:
+          with st.expander('➕ เพิ่มรถยนต์ใหม่'):
+            with st.form('add_v_form'):
+              b = st.text_input('ยี่ห้อ')
+              m = st.text_input('รุ่น')
+              l = st.text_input('ทะเบียนรถ')
+              t = st.text_input('ประเภทรถ')
+              y = st.number_input('ปีรถ (ค.ศ.)', value=2023, step=1)
+              c = st.text_input('สีรถ')
+              p = st.number_input('ราคาเช่าต่อวัน', value=1000.0, step=100.0)
+
+              if st.form_submit_button('บันทึกรถยนต์'):
+                if b and m and l:
+                  new_v = Vehicle(
+                      brand=b,
+                      model=m,
+                      license_plate=l,
+                      vehicle_type=t,
+                      year=int(y),
+                      color=c,
+                      price_per_day=float(p),
+                  )
+                  if vehicle_dao.addVehicle(new_v):
+                    st.success('เพิ่มรถยนต์สำเร็จ!')
+                    st.rerun()
+
+        with col_edit:
+          with st.expander('✏️ แก้ไขข้อมูลรถยนต์'):
+            v_id_to_edit = st.number_input(
+                'ระบุรหัสรถยนต์ที่ต้องการแก้ไข', min_value=1, step=1
+            )
+            v_obj = next(
+                (x for x in vehicles_list if x.get_id() == v_id_to_edit), None
+            )
+
+            if v_obj:
+              eb = st.text_input('ยี่ห้อ', value=v_obj.get_brand())
+              em = st.text_input('รุ่น', value=v_obj.get_model())
+              el = st.text_input('ทะเบียนรถ', value=v_obj.get_license_plate())
+              et = st.text_input('ประเภท', value=v_obj.get_type())
+              ey = st.number_input(
+                  'ปีรถ', value=int(v_obj.get_year()), step=1
+              )
+              ec = st.text_input('สี', value=v_obj.get_color())
+              ep = st.number_input(
+                  'ราคา/วัน',
+                  value=float(v_obj.get_price_per_day()),
+                  step=100.0,
+              )
+              es = st.selectbox(
+                  'สถานะ',
+                  ['พร้อมใช้งาน', 'ถูกเช่าอยู่', 'ซ่อมบำรุง'],
+                  index=[
+                      'AVAILABLE',
+                      'RENTED',
+                      'MAINTENANCE',
+                  ].index(v_obj.get_status()),
+              )
+
+              rev_status = {
+                  'พร้อมใช้งาน': 'AVAILABLE',
+                  'ถูกเช่าอยู่': 'RENTED',
+                  'ซ่อมบำรุง': 'MAINTENANCE',
+              }
+
+              if st.button('อัปเดตข้อมูลรถ'):
+                updated_v = Vehicle(
+                    vehicle_id=v_id_to_edit,
+                    brand=eb,
+                    model=em,
+                    license_plate=el,
+                    vehicle_type=et,
+                    year=int(ey),
+                    color=ec,
+                    price_per_day=float(ep),
+                    status=rev_status[es],
+                )
+                if vehicle_dao.updateVehicle(updated_v):
+                  st.success('อัปเดตข้อมูลสำเร็จ!')
+                  st.rerun()
+
+        with col_del:
+          with st.expander('🗑️ ลบรถยนต์'):
+            v_id_to_del = st.number_input(
+                'ระบุรหัสรถยนต์ที่ต้องการลบ', min_value=1, step=1
+            )
+            if st.button('ยืนยันการลบรถยนต์', type='primary'):
+              if vehicle_dao.deleteVehicle(v_id_to_del):
+                st.success('ลบรถยนต์เรียบร้อย!')
+                st.rerun()
+
+      # TAB 2: รายการเช่าและรับคืนรถ
+      with tab2:
+        st.subheader('รายการประวัติการเช่าทั้งหมด')
+        rentals_all = rental_dao.getAllRentals()
+
+        r_data = []
+        for r in rentals_all:
+          r_data.append({
+              'รหัสเช่า': r['id'],
+              'ชื่อลูกค้า': r['customer_name'],
+              'รุ่นรถ': f"{r['brand']} {r['model']}",
+              'ทะเบียน': r['license_plate'],
+              'เริ่มเช่า': r['start_date'],
+              'กำหนดคืน': r['due_date'],
+              'คืนจริง': r['return_date'] or '-',
+              'ราคารวม': f"฿{r['total_price']:,.2f}",
+              'สถานะ': STATUS_THAI.get(r['status'], r['status']),
+          })
+        st.dataframe(pd.DataFrame(r_data), use_container_width=True, height=300)
+
+        st.divider()
+
+        col_ret, col_can = st.columns(2)
+
+        with col_ret:
+          st.markdown('#### 📥 บันทึกรับคืนรถยนต์ (Return Vehicle)')
+          ret_r_id = st.number_input(
+              'ระบุรหัสเช่าที่ต้องการรับคืน', min_value=1, step=1
+          )
+
+          if st.button('คำนวณและทำรายการรับคืน'):
+            r_target = next(
+                (x for x in rentals_all if x['id'] == ret_r_id), None
+            )
+            if not r_target:
+              st.error('ไม่พบรหัสเช่านี้')
+            elif r_target['status'] != 'ACTIVE':
+              st.warning(
+                  'รายการนี้ไม่ได้อยู่ในสถานะ "กำลังเช่า" ไม่สามารถคืนรถได้'
+              )
+            else:
+              today = date.today()
+              due_d = r_target['due_date']
+              late_days = (today - due_d).days if today > due_d else 0
+              late_fee = late_days * 500.0
+
+              pay_strat = CashPayment()
+              if late_fee > 0:
+                st.warning(
+                    f'เกินกำหนด {late_days} วัน! มีค่าปรับเพิ่มเติม:'
+                    f' ฿{late_fee:,.2f}'
+                )
+
+              if rental_dao.returnVehicle(
+                  ret_r_id,
+                  r_target['vehicle_id'],
+                  today,
+                  late_days,
+                  late_fee,
+                  pay_strat,
+              ):
+                st.success(
+                    'บันทึกการคืนรถสำเร็จ!'
+                    f' ค่าปรับเพิ่มเติม: ฿{late_fee:,.2f}'
+                )
+                st.rerun()
+
+        with col_can:
+          st.markdown('#### ❌ ยกเลิกการเช่า (Cancel)')
+          can_r_id = st.number_input(
+              'ระบุรหัสเช่าที่ต้องการยกเลิก', min_value=1, step=1
+          )
+          if st.button('ยกเลิกรายการเช่านี้'):
+            r_target = next(
+                (x for x in rentals_all if x['id'] == can_r_id), None
+            )
+            if r_target and r_target['status'] == 'ACTIVE':
+              if rental_dao.cancelRental(can_r_id, r_target['vehicle_id']):
+                st.success('ยกเลิกการเช่าสำเร็จ!')
+                st.rerun()
+            else:
+              st.error('ไม่สามารถยกเลิกรายการนี้ได้')
+
+    # ==========================================
+    # CUSTOMER VIEW
+    # ==========================================
+    else:
+      cust: Customer = current_user
+      st.title(f'👤 บริการเช่ารถยนต์ (คุณ{cust.get_name()})')
+
+      tab1, tab2 = st.tabs(
+          ['🚘 เลือกรถและทำรายการเช่า', '📜 ประวัติการเช่าของฉัน']
+      )
+
+      # TAB 1: เลือกรถและทำรายการเช่า
+      with tab1:
+        st.subheader('ค้นหาและเลือกรถยนต์ที่ต้องการเช่า')
+
+        kw = st.text_input('🔍 ค้นหารถ (พิมพ์ ยี่ห้อ / รุ่น / ประเภท)')
+
+        all_v = vehicle_dao.getAllVehicles()
+        filtered_v = []
+        for v in all_v:
+          full_str = (
+              f'{v.get_brand()} {v.get_model()} {v.get_type()}'.lower()
+          )
+          if not kw or kw.lower() in full_str:
+            filtered_v.append({
+                'รหัส': v.get_id(),
+                'ยี่ห้อ': v.get_brand(),
+                'รุ่น': v.get_model(),
+                'ทะเบียน': v.get_license_plate(),
+                'ประเภท': v.get_type(),
+                'ปี': v.get_year(),
+                'สี': v.get_color(),
+                'ราคา/วัน (บาท)': v.get_price_per_day(),
+                'สถานะ': STATUS_THAI.get(v.get_status(), v.get_status()),
+            })
+
+        df_avail = pd.DataFrame(filtered_v)
+        st.dataframe(df_avail, use_container_width=True, height=350)
+
+        st.divider()
+
+        st.markdown('#### 🔑 ทำรายการเช่ารถยนต์')
+        col_rent1, col_rent2, col_rent3 = st.columns(3)
+
+        with col_rent1:
+          selected_v_id = st.number_input(
+              'ระบุรหัสรถยนต์ที่ต้องการเช่า', min_value=1, step=1
+          )
+        with col_rent2:
+          rent_days = st.number_input(
+              'จำนวนวันที่ต้องการเช่า (วัน)', min_value=1, value=1, step=1
+          )
+        with col_rent3:
+          pay_method_type = st.selectbox(
+              'ช่องทางชำระเงิน',
+              [
+                  '💵 เงินสด (Cash)',
+                  '💳 บัตรเครดิต (Credit Card)',
+                  '🏦 โอนผ่านธนาคาร (Bank Transfer)',
+              ],
+          )
+
+        # คำนวณยอดเงิน
+        target_v = next(
+            (x for x in all_v if x.get_id() == selected_v_id), None
+        )
+        if target_v:
+          total_price = rent_days * target_v.get_price_per_day()
+          st.info(
+              f'ยี่ห้อ/รุ่น: **{target_v.get_brand()} {target_v.get_model()}**'
+              f' | ยอดชำระทั้งหมด: **฿{total_price:,.2f}**'
+          )
+
+          if st.button(
+              '🔑 ยืนยันชำระเงินและทำรายการเช่า', type='primary'
           ):
-            pay_strat = BankTransferPayment('REF-LATE-888')
+            if target_v.get_status() != 'AVAILABLE':
+              st.error(
+                  'รถยนต์คันนี้ไม่พร้อมใช้งานสำหรับการเช่า (ถูกเช่าหรือซ่อมบำรุงอยู่)'
+              )
+            else:
+              payment_strategy = CashPayment()
+              if 'บัตรเครดิต' in pay_method_type:
+                payment_strategy = CreditCardPayment('4111-2222-3333-4444')
+              elif 'โอนผ่านธนาคาร' in pay_method_type:
+                payment_strategy = BankTransferPayment('TXN-ONLINE-999')
 
-        if self.rental_dao.returnVehicle(
-            r_id, r_data['vehicle_id'], today, late_days, late_fee, pay_strat
-        ):
-          messagebox.showinfo(
-              'สำเร็จ',
-              f'บันทึกรับคืนรถยนต์เรียบร้อย!\nเกินกำหนด: {late_days}'
-              f' วัน\nค่าปรับเพิ่มเติม: ฿{late_fee:,.2f}',
-          )
-          load_rentals()
+              start_d = date.today()
+              due_d = date.fromordinal(start_d.toordinal() + int(rent_days))
 
-    def process_admin_cancel():
-      selected = tree.selection()
-      if not selected:
-        messagebox.showwarning(
-            'แจ้งเตือน', 'กรุณาเลือกรายการเช่าที่ต้องการยกเลิก'
-        )
-        return
-      item = tree.item(selected[0])
-      r_id, status_th = item['values'][0], item['values'][8]
+              if rental_dao.createRental(
+                  cust.get_customer_id(),
+                  target_v.get_id(),
+                  start_d,
+                  due_d,
+                  int(rent_days),
+                  target_v.get_price_per_day(),
+                  total_price,
+                  payment_strategy,
+              ):
+                st.success(
+                    'ทำรายการเช่าสำเร็จ!'
+                    f' กำหนดคืนวันที่: {due_d.strftime("%d/%m/%Y")}'
+                )
+                st.rerun()
 
-      if status_th != STATUS_THAI['ACTIVE']:
-        messagebox.showwarning(
-            'แจ้งเตือน',
-            'สามารถยกเลิกได้เฉพาะรายการที่อยู่ในสถานะ "กำลังเช่า" เท่านั้น',
-        )
-        return
+      # TAB 2: ประวัติการเช่าของฉัน
+      with tab2:
+        st.subheader('ประวัติการเช่าของฉัน')
+        my_rentals = rental_dao.getRentalsByCustomer(cust.get_customer_id())
 
-      all_r = self.rental_dao.getAllRentals()
-      r_data = next((x for x in all_r if x['id'] == r_id), None)
+        my_r_data = []
+        for r in my_rentals:
+          my_r_data.append({
+              'รหัสเช่า': r['id'],
+              'รถยนต์ที่เช่า': f"{r['brand']} {r['model']}",
+              'ทะเบียน': r['license_plate'],
+              'เริ่มเช่า': r['start_date'],
+              'กำหนดคืน': r['due_date'],
+              'คืนจริง': r['return_date'] or '-',
+              'ราคารวม': f"฿{r['total_price']:,.2f}",
+              'สถานะ': STATUS_THAI.get(r['status'], r['status']),
+          })
 
-      if r_data and messagebox.askyesno(
-          'ยืนยันการยกเลิก', f'คุณต้องการยกเลิกการเช่ารหัส {r_id} ใช่หรือไม่?'
-      ):
-        if self.rental_dao.cancelRental(r_id, r_data['vehicle_id']):
-          messagebox.showinfo(
-              'สำเร็จ', 'ยกเลิกรายการเช่าและคืนสถานะรถเรียบร้อยแล้ว'
-          )
-          load_rentals()
-
-    btn_frame = ttk.Frame(parent)
-    btn_frame.pack(fill=tk.X, pady=(10, 0))
-    ttk.Button(
-        btn_frame,
-        text='🔄 รีเฟรชรายการ',
-        style='Primary.TButton',
-        command=load_rentals,
-    ).pack(side=tk.LEFT, padx=5)
-    ttk.Button(
-        btn_frame,
-        text='📥 บันทึกรับคืนรถยนต์ (Return Vehicle)',
-        style='Success.TButton',
-        command=process_return,
-    ).pack(side=tk.LEFT, padx=5)
-    ttk.Button(
-        btn_frame,
-        text='❌ ยกเลิกการเช่า (Cancel)',
-        style='Danger.TButton',
-        command=process_admin_cancel,
-    ).pack(side=tk.LEFT, padx=5)
-
-    load_rentals()
-
-  # --- CUSTOMER DASHBOARD ---
-  def show_customer_dashboard(self):
-    self.clear_screen()
-    cust: Customer = self.current_user
-
-    header = ttk.Frame(self, padding=(15, 10))
-    header.pack(fill=tk.X)
-    ttk.Label(
-        header,
-        text=f'👤 บริการเช่ารถยนต์สำหรับลูกค้า (คุณ{cust.get_name()})',
-        style='Header.TLabel',
-    ).pack(side=tk.LEFT)
-    ttk.Button(
-        header,
-        text='ออกจากระบบ',
-        style='Danger.TButton',
-        command=self.show_login_frame,
-    ).pack(side=tk.RIGHT)
-
-    notebook = ttk.Notebook(self)
-    notebook.pack(fill=tk.BOTH, expand=True, padx=15, pady=10)
-
-    tab_browse = ttk.Frame(notebook, padding=10)
-    tab_history = ttk.Frame(notebook, padding=10)
-
-    notebook.add(tab_browse, text=' 🚘 เลือกรถและทำรายการเช่า ')
-    notebook.add(tab_history, text=' 📜 ประวัติการเช่าของฉัน ')
-
-    # --- TAB BROWSE VEHICLES ---
-    search_frame = ttk.Frame(tab_browse)
-    search_frame.pack(fill=tk.X, pady=(0, 10))
-
-    ttk.Label(search_frame, text='🔍 ค้นหารถ (ยี่ห้อ/รุ่น/ประเภท):').pack(
-        side=tk.LEFT, padx=(0, 5)
-    )
-    search_entry = ttk.Entry(search_frame, width=30)
-    search_entry.pack(side=tk.LEFT, padx=5)
-
-    columns = (
-        'id',
-        'brand',
-        'model',
-        'license',
-        'type',
-        'year',
-        'color',
-        'price_per_day',
-        'status',
-    )
-    headers = (
-        'รหัส',
-        'ยี่ห้อ',
-        'รุ่น',
-        'ทะเบียน',
-        'ประเภท',
-        'ปี',
-        'สี',
-        'ราคา/วัน',
-        'สถานะ',
-    )
-
-    tree_frame = ttk.Frame(tab_browse)
-    tree_frame.pack(fill=tk.BOTH, expand=True)
-
-    tree = ttk.Treeview(tree_frame, columns=columns, show='headings')
-    for c, h in zip(columns, headers):
-      tree.heading(c, text=h)
-      tree.column(c, width=100, anchor=tk.CENTER)
-
-    scrollbar = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=tree.yview)
-    tree.configure(yscroll=scrollbar.set)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    tree.pack(fill=tk.BOTH, expand=True)
-
-    def load_available():
-      for i in tree.get_children():
-        tree.delete(i)
-      kw = search_entry.get().strip().lower()
-      for v in self.vehicle_dao.getAllVehicles():
-        status_th = STATUS_THAI.get(v.get_status(), v.get_status())
-        full_info = f'{v.get_brand()} {v.get_model()} {v.get_type()}'.lower()
-        if not kw or kw in full_info:
-          tree.insert(
-              '',
-              tk.END,
-              values=(
-                  v.get_id(),
-                  v.get_brand(),
-                  v.get_model(),
-                  v.get_license_plate(),
-                  v.get_type(),
-                  v.get_year(),
-                  v.get_color(),
-                  f'฿{v.get_price_per_day():,.2f}',
-                  status_th,
-              ),
-          )
-
-    ttk.Button(
-        search_frame, text='ค้นหา', style='Primary.TButton', command=load_available
-    ).pack(side=tk.LEFT, padx=5)
-    ttk.Button(
-        search_frame,
-        text='แสดงทั้งหมด',
-        style='Primary.TButton',
-        command=lambda: [search_entry.delete(0, tk.END), load_available()],
-    ).pack(side=tk.LEFT, padx=5)
-
-    def do_rent_vehicle():
-      selected = tree.selection()
-      if not selected:
-        messagebox.showwarning('แจ้งเตือน', 'กรุณาเลือกรถยนต์ที่ต้องการเช่า')
-        return
-
-      v_values = tree.item(selected[0])['values']
-      v_id, price_str, status_th = v_values[0], str(v_values[7]), v_values[8]
-
-      if status_th != STATUS_THAI['AVAILABLE']:
-        messagebox.showerror(
-            'ไม่พร้อมใช้งาน', 'รถยนต์คันนี้ไม่พร้อมใช้งานสำหรับการเช่าในขณะนี้'
-        )
-        return
-
-      price_per_day = float(price_str.replace('฿', '').replace(',', ''))
-
-      days_str = simpledialog.askstring(
-          'ระยะเวลาเช่า', 'ต้องการเช่ารถยนต์กี่วัน? (ระบุจำนวนวัน):'
-      )
-      if not days_str or not days_str.isdigit():
-        return
-
-      days = int(days_str)
-      if days <= 0:
-        return
-
-      total_price = days * price_per_day
-
-      pay_dialog = tk.Toplevel(self)
-      pay_dialog.title('เลือกช่องทางการชำระเงิน')
-      pay_dialog.geometry('350x250')
-      pay_dialog.configure(bg='#FFFFFF')
-
-      # ใช้ Label มาตรฐานเพื่อกำหนดสีตัวอักษรได้ตรงๆ โดยไม่ชนกับ ttk
-      lbl_pay = tk.Label(
-          pay_dialog,
-          text=f'ยอดชำระทั้งหมด: ฿{total_price:,.2f}',
-          font=('Tahoma', 14, 'bold'),
-          fg='#0D9488',
-          bg='#FFFFFF',
-      )
-      lbl_pay.pack(pady=15)
-
-      def process_pay(method_type):
-        pay_dialog.destroy()
-        payment_strategy = None
-        if method_type == 'CASH':
-          payment_strategy = CashPayment()
-        elif method_type == 'CREDIT':
-          payment_strategy = CreditCardPayment('4111-2222-3333-4444')
-        elif method_type == 'BANK':
-          payment_strategy = BankTransferPayment('TXN-ONLINE-999')
-
-        start_d = date.today()
-        due_d = date.fromordinal(start_d.toordinal() + days)
-
-        if self.rental_dao.createRental(
-            cust.get_customer_id(),
-            v_id,
-            start_d,
-            due_d,
-            days,
-            price_per_day,
-            total_price,
-            payment_strategy,
-        ):
-          messagebox.showinfo(
-              'สำเร็จ',
-              'ทำรายการเช่าสำเร็จ!\nกำหนดคืนรถวันที่:'
-              f' {due_d.strftime("%d/%m/%Y")}',
-          )
-          load_available()
-          load_history()
-
-      ttk.Button(
-          pay_dialog,
-          text='💵 ชำระด้วย เงินสด (Cash)',
-          style='Success.TButton',
-          command=lambda: process_pay('CASH'),
-      ).pack(fill=tk.X, padx=25, pady=4)
-      ttk.Button(
-          pay_dialog,
-          text='💳 ชำระด้วย บัตรเครดิต (Credit Card)',
-          style='Primary.TButton',
-          command=lambda: process_pay('CREDIT'),
-      ).pack(fill=tk.X, padx=25, pady=4)
-      ttk.Button(
-          pay_dialog,
-          text='🏦 ชำระด้วย โอนผ่านธนาคาร (Bank Transfer)',
-          style='Primary.TButton',
-          command=lambda: process_pay('BANK'),
-      ).pack(fill=tk.X, padx=25, pady=4)
-
-    btn_rent = ttk.Button(
-        tab_browse,
-        text='🔑 ยืนยันทำรายการเช่ารถคันที่เลือก',
-        style='Success.TButton',
-        command=do_rent_vehicle,
-    )
-    btn_rent.pack(pady=10)
-
-    load_available()
-
-    # --- TAB HISTORY SETUP ---
-    hist_cols = (
-        'id',
-        'vehicle',
-        'license',
-        'start',
-        'due',
-        'return',
-        'total_price',
-        'status',
-    )
-    hist_headers = (
-        'รหัสเช่า',
-        'รถยนต์ที่เช่า',
-        'ทะเบียน',
-        'วันที่เริ่มเช่า',
-        'กำหนดคืน',
-        'คืนจริง',
-        'ยอดรวม',
-        'สถานะ',
-    )
-
-    tree_hist_frame = ttk.Frame(tab_history)
-    tree_hist_frame.pack(fill=tk.BOTH, expand=True)
-
-    tree_hist = ttk.Treeview(tree_hist_frame, columns=hist_cols, show='headings')
-    for c, h in zip(hist_cols, hist_headers):
-      tree_hist.heading(c, text=h)
-      tree_hist.column(c, width=110, anchor=tk.CENTER)
-
-    scrollbar_hist = ttk.Scrollbar(
-        tree_hist_frame, orient=tk.VERTICAL, command=tree_hist.yview
-    )
-    tree_hist.configure(yscroll=scrollbar_hist.set)
-    scrollbar_hist.pack(side=tk.RIGHT, fill=tk.Y)
-    tree_hist.pack(fill=tk.BOTH, expand=True, pady=5)
-
-    def load_history():
-      for i in tree_hist.get_children():
-        tree_hist.delete(i)
-      for r in self.rental_dao.getRentalsByCustomer(cust.get_customer_id()):
-        v_info = f"{r['brand']} {r['model']}"
-        status_th = STATUS_THAI.get(r['status'], r['status'])
-        tree_hist.insert(
-            '',
-            tk.END,
-            values=(
-                r['id'],
-                v_info,
-                r['license_plate'],
-                r['start_date'],
-                r['due_date'],
-                r['return_date'] or '-',
-                f"฿{r['total_price']:,.2f}",
-                status_th,
-            ),
+        st.dataframe(
+            pd.DataFrame(my_r_data), use_container_width=True, height=300
         )
 
-    def process_customer_cancel():
-      selected = tree_hist.selection()
-      if not selected:
-        messagebox.showwarning(
-            'แจ้งเตือน', 'กรุณาเลือกรายการเช่าที่ต้องการยกเลิก'
+        st.divider()
+
+        # ยกเลิกรายการ
+        st.markdown('#### ❌ ยกเลิกรายการเช่า')
+        cancel_id = st.number_input(
+            'ระบุรหัสเช่าที่ต้องการยกเลิก', min_value=1, step=1
         )
-        return
-
-      item_vals = tree_hist.item(selected[0])['values']
-      r_id, status_th = item_vals[0], item_vals[7]
-
-      if status_th != STATUS_THAI['ACTIVE']:
-        messagebox.showwarning(
-            'แจ้งเตือน',
-            'คุณสามารถยกเลิกได้เฉพาะรายการที่อยู่ในสถานะ "กำลังเช่า" เท่านั้น',
-        )
-        return
-
-      user_rentals = self.rental_dao.getRentalsByCustomer(cust.get_customer_id())
-      r_data = next((x for x in user_rentals if x['id'] == r_id), None)
-
-      if r_data and messagebox.askyesno(
-          'ยืนยันการยกเลิก',
-          f'คุณต้องการยกเลิกการเช่ารถรายการรหัส {r_id} ใช่หรือไม่?',
-      ):
-        if self.rental_dao.cancelRental(r_id, r_data['vehicle_id']):
-          messagebox.showinfo('สำเร็จ', 'ยกเลิกรายการเช่ารถยนต์เรียบร้อยแล้ว')
-          load_history()
-          load_available()
-
-    btn_hist_frame = ttk.Frame(tab_history)
-    btn_hist_frame.pack(fill=tk.X, pady=(5, 0))
-
-    ttk.Button(
-        btn_hist_frame,
-        text='🔄 รีเฟรชประวัติ',
-        style='Primary.TButton',
-        command=load_history,
-    ).pack(side=tk.LEFT, padx=5)
-
-    ttk.Button(
-        btn_hist_frame,
-        text='❌ ยกเลิกรายการเช่านี้',
-        style='Danger.TButton',
-        command=process_customer_cancel,
-    ).pack(side=tk.LEFT, padx=5)
-
-    load_history()
+        if st.button('ยกเลิกรายการเช่านี้'):
+          r_target = next((x for x in my_rentals if x['id'] == cancel_id), None)
+          if r_target and r_target['status'] == 'ACTIVE':
+            if rental_dao.cancelRental(cancel_id, r_target['vehicle_id']):
+              st.success('ยกเลิกรายการเช่าเรียบร้อยแล้ว!')
+              st.rerun()
+          else:
+            st.error(
+                'ไม่พบรายการ หรือรายการไม่อยู่ในสถานะ "กำลังเช่า"'
+                ' ไม่สามารถยกเลิกได้'
+            )
 
 
-# ==========================================
-# 7. MAIN PROGRAM ENTRY POINT
-# ==========================================
 if __name__ == '__main__':
-  app = MainApplication()
-  app.mainloop()
+  main()
